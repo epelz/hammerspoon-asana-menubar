@@ -93,7 +93,7 @@ local function onResponse(status, body)
         local name = v.name
         local due_on = v.due_on
         local due_on_sec = dateStringToSeconds(due_on)
-        local url = string.format("https://app.asana.com/0/%s/%s", gid, gid)
+        local url = string.format("https://app.asana.com/0/%s/%s/f", gid, gid)
 
         if due_on_sec ~= nil and midnightSec > due_on_sec then
             table.insert(results, {
