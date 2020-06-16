@@ -21,9 +21,17 @@ obj.license = 'MIT - https://opensource.org/licenses/MIT'
 
 -- Constants
 local TITLE="∴"
-local ASANA_FETCH_TASKS_ROUTE="https://app.asana.com/api/1.0/user_task_lists/%s/tasks?completed_since=now&opt_fields=name,due_on"
+local ASANA_GET_TASKS_ROUTE="https://app.asana.com/api/1.0/user_task_lists/%s/tasks?completed_since=now&opt_fields=name,due_on"
+local ASANA_POST_TASK_ROUTE="https://app.asana.com/api/1.0/tasks?assignee=%i&workspace=%i&due_on=%s&name=%s"
 
-local function midnightInSec(due_on) 
+local function asanaApiHeaders()
+    return {
+        Accept = "application/json",
+        Authorization = string.format("Bearer %s", obj.config.asana_api_pat)
+    }
+end
+
+local function midnightInSec(due_on)
     local dt = os.date("*t")
     dt.day = dt.day + 1
     dt.hour = 0
@@ -49,6 +57,20 @@ local function printableNow()
     return os.date('%Y-%m-%d %H:%M:%S')
 end
 
+local function promptForTask()
+    -- TODO: Support "cancel" button
+    local _, taskName = hs.dialog.textPrompt("Create reminder task", "Please enter the task name you'd like to create. Note: It will be assigned to you, and due today.", "", "Create Task")
+    print("Creating task now...", taskName)
+
+    -- TODO: Instead of constants, can use API on init to get these IDs.
+    -- TODO: Put in central "reminder" project?
+    local postUrl = string.format(ASANA_POST_TASK_ROUTE, obj.config.asana_user_id, obj.config.asana_workspace_id, os.date("%Y-%m-%d"), hs.http.encodeForQuery(taskName))
+
+    hs.http.asyncPost(postUrl, "", asanaApiHeaders(), function(response_status, response_body, response_headers) print(response_status, response_body, response_headers) end)
+
+    -- TODO: Add notification/alert that confirms creation, or shows error (with content, so no dataloss)
+end
+
 local function updateMenu(results)
     -- Count before adding extra items
     local numResults = #results
@@ -59,7 +81,12 @@ local function updateMenu(results)
         title = string.format("Last updated: %s", printableNow()),
         fn = function() hs.urlevent.openURL("https://app.asana.com/") end,
     })
-    table.insert(results, { sortVal = 1, title = "-" })
+    table.insert(results, {
+        sortVal = 1,
+        title = "Create Reminder Task",
+        fn = function() promptForTask() end,
+    })
+    table.insert(results, { sortVal = 2, title = "-" })
     table.sort(results, function(a, b) return a.sortVal < b.sortVal end)
 
     -- Update menu
@@ -110,14 +137,10 @@ local function onResponse(status, body)
 end
 
 local function onInterval()
-    local fetchUrl = string.format(ASANA_FETCH_TASKS_ROUTE, obj.config.asana_task_list_id)
-    local headers = {
-        Accept = "application/json",
-        Authorization = string.format("Bearer %s", obj.config.asana_api_pat)
-    }
+    local fetchUrl = string.format(ASANA_GET_TASKS_ROUTE, obj.config.asana_task_list_id)
 
     print("Fetching now...", printableNow())
-    hs.http.asyncGet(fetchUrl, headers, onResponse)
+    hs.http.asyncGet(fetchUrl, asanaApiHeaders(), onResponse)
 end
 
 --- MyTasks:start()
@@ -129,6 +152,8 @@ end
 ---              asana_api_pat:      Asana Personal Access Token (required)
 ---              asana_task_list_id: Asana Task List (required)
 ---                                  https://developers.asana.com/docs/get-a-users-task-list
+---              asana_user_id:      Asana User ID (required)
+---              asana_workspace_id: Asana Workspace ID (required)
 ---              refresh_interval:   Interval in seconds to refresh (default 300)
 ---
 --- Returns:
@@ -145,9 +170,9 @@ function obj:start(config)
             { title = "Loading..."}
         })
     end
-    
+
     -- Start timer, and immediately start
-    self.timer = hs.timer.new(config.refresh_interval, onInterval)
+    self.timer = hs.timer.new(self.config.refresh_interval, onInterval)
     self.timer:start()
     onInterval()
 
