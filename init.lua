@@ -58,8 +58,11 @@ local function printableNow()
 end
 
 local function promptForTask()
-    -- TODO: Support "cancel" button
     local _, taskName = hs.dialog.textPrompt("Create reminder task", "Please enter the task name you'd like to create. Note: It will be assigned to you, and due today.", "", "Create Task")
+
+    -- Ideally we'd have a "cancel" button, but for now, just short-circuit for empty task names.
+    if taskName == "" then print("Skipping task creation", taskName); return end
+
     print("Creating task now...", taskName)
 
     -- TODO: Instead of constants, can use API on init to get these IDs.
